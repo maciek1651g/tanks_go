@@ -2,6 +2,7 @@ package main
 
 import (
 	"net/http"
+	"os"
 )
 
 func main() {
@@ -19,6 +20,11 @@ func initializeWebSockets() {
 }
 
 func initializeServer() {
-	println("You server run 8080")
-	http.ListenAndServe(":8080", nil)
+	port := os.Getenv("PORT")
+	if port == "" {
+		port = "8080"
+	}
+
+	println("You server run " + port)
+	http.ListenAndServe(":"+port, nil)
 }
