@@ -8,6 +8,7 @@ import (
 func main() {
 	configureConnector()
 	initializeWebSockets()
+	initializeHttpEndpoints()
 	initializeServer()
 }
 
@@ -17,6 +18,10 @@ func configureConnector() {
 
 func initializeWebSockets() {
 	http.HandleFunc("/tanks/objects:exchange", handleTanksConnection)
+}
+
+func initializeHttpEndpoints() {
+	http.Handle("/", http.FileServer(http.Dir("./static")))
 }
 
 func initializeServer() {
