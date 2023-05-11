@@ -26,10 +26,11 @@ func handleTanksConnection(w http.ResponseWriter, r *http.Request) {
 
 	clients = append(clients, *conn)
 
-	for {
+	for true {
 		msgType, message, err := conn.ReadMessage()
 
 		if err != nil {
+			fmt.Printf(err.Error() + "\n")
 			return
 		}
 
@@ -37,6 +38,7 @@ func handleTanksConnection(w http.ResponseWriter, r *http.Request) {
 		var payload, payloadError = createTanksPayload(message)
 
 		if payloadError != nil {
+			fmt.Printf(payloadError.Error() + "\n")
 			return
 		}
 
@@ -44,6 +46,7 @@ func handleTanksConnection(w http.ResponseWriter, r *http.Request) {
 			if client.RemoteAddr() != conn.RemoteAddr() {
 				fmt.Printf("%s : Sending payload : '%s'\n", client.RemoteAddr(), string(payload))
 				if err = client.WriteMessage(msgType, payload); err != nil {
+					fmt.Printf(err.Error() + "\n")
 					return
 				}
 			}
