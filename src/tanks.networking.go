@@ -14,6 +14,8 @@ var connector = websocket.Upgrader{
 
 var clients []websocket.Conn
 
+var objects = make(map[string]TanksPayload)
+
 func handleTanksConnection(w http.ResponseWriter, r *http.Request) {
 
 	conn, err := connector.Upgrade(w, r, nil)
@@ -26,8 +28,10 @@ func handleTanksConnection(w http.ResponseWriter, r *http.Request) {
 
 	clients = append(clients, *conn)
 
+	sendHistoricalPayloadsForObjects(conn)
+
 	for true {
-		msgType, message, err := conn.ReadMessage()
+		_, message, err := conn.ReadMessage()
 
 		if err != nil {
 			fmt.Printf(err.Error() + "\n")
@@ -42,10 +46,12 @@ func handleTanksConnection(w http.ResponseWriter, r *http.Request) {
 			return
 		}
 
+		savePayload(payload.Id, payload)
+
 		for _, client := range clients {
 			if client.RemoteAddr() != conn.RemoteAddr() {
-				fmt.Printf("%s : Sending payload : '%s'\n", client.RemoteAddr(), string(payload))
-				if err = client.WriteMessage(msgType, payload); err != nil {
+				fmt.Printf("%s : Sending payload : '%s'\n", client.RemoteAddr(), payload)
+				if err = client.WriteJSON(payload); err != nil {
 					fmt.Printf(err.Error() + "\n")
 					return
 				}
@@ -54,13 +60,23 @@ func handleTanksConnection(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func createTanksPayload(message []byte) ([]byte, error) {
+func createTanksPayload(message []byte) (TanksPayload, error) {
 	var requestPayload TanksPayload
 	unmarshallErr := json.Unmarshal(message, &requestPayload)
+	return requestPayload, unmarshallErr
+}
 
-	if unmarshallErr != nil {
-		return nil, unmarshallErr
+func savePayload(id string, payload TanksPayload) {
+	objects[id] = payload
+}
+
+func sendHistoricalPayloadsForObjects(client *websocket.Conn) {
+	for _, value := range objects {
+		fmt.Printf("Sending historical data to %s : %s\n", client.RemoteAddr(), value)
+		var err = client.WriteJSON(value)
+
+		if err != nil {
+			fmt.Printf("There was an error when sending payload to %s : %s\n", client.RemoteAddr(), err.Error())
+		}
 	}
-
-	return json.Marshal(requestPayload)
 }
