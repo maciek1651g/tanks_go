@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/gorilla/websocket"
 	"net/http"
+	"sync"
 )
 
 var connector = websocket.Upgrader{
@@ -14,7 +15,7 @@ var connector = websocket.Upgrader{
 
 var clients []websocket.Conn
 
-var objects = make(map[string]TanksPayload)
+var objects = sync.Map{}
 
 func handleTanksConnection(w http.ResponseWriter, r *http.Request) {
 
@@ -67,16 +68,18 @@ func createTanksPayload(message []byte) (TanksPayload, error) {
 }
 
 func savePayload(id string, payload TanksPayload) {
-	objects[id] = payload
+	objects.Store(id, payload)
 }
 
 func sendHistoricalPayloadsForObjects(client *websocket.Conn) {
-	for _, value := range objects {
+	objects.Range(func(key, value interface{}) bool {
 		fmt.Printf("Sending historical data to %s : %s\n", client.RemoteAddr(), value)
 		var err = client.WriteJSON(value)
 
 		if err != nil {
 			fmt.Printf("There was an error when sending payload to %s : %s\n", client.RemoteAddr(), err.Error())
 		}
-	}
+
+		return true
+	})
 }
