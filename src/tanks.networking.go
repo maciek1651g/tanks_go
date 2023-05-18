@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"fmt"
 	"github.com/gorilla/websocket"
 	"net/http"
@@ -14,7 +13,7 @@ var connector = websocket.Upgrader{
 }
 
 var clients []websocket.Conn
-
+var metadata = sync.Map{}
 var objects = sync.Map{}
 
 func handleTanksConnection(w http.ResponseWriter, r *http.Request) {
@@ -25,10 +24,15 @@ func handleTanksConnection(w http.ResponseWriter, r *http.Request) {
 		fmt.Printf("Error occurred : %s", err)
 	}
 
+	conn.SetCloseHandler(func(code int, text string) error {
+		handleUserDisconnection(conn)
+		return nil
+	})
+
 	fmt.Println("Initialized connection for : " + conn.RemoteAddr().String())
 
 	clients = append(clients, *conn)
-
+	performUserInitialization(conn)
 	sendHistoricalPayloadsForObjects(conn)
 
 	for true {
@@ -40,35 +44,45 @@ func handleTanksConnection(w http.ResponseWriter, r *http.Request) {
 		}
 
 		fmt.Printf("%s : Received payload = '%s'\n", conn.RemoteAddr(), string(message))
-		var payload, payloadError = createTanksPayload(message)
+		var payload, payloadError = createCoordinatesPayload(message)
 
 		if payloadError != nil {
 			fmt.Printf(payloadError.Error() + "\n")
 			return
 		}
 
-		savePayload(payload.Id, payload)
-
-		for _, client := range clients {
-			if client.RemoteAddr() != conn.RemoteAddr() {
-				fmt.Printf("%s : Sending payload : '%s'\n", client.RemoteAddr(), payload)
-				if err = client.WriteJSON(payload); err != nil {
-					fmt.Printf(err.Error() + "\n")
-					return
-				}
-			}
-		}
+		saveCoordinates(payload.Id, payload)
+		broadcastPayload(conn, payload)
 	}
 }
 
-func createTanksPayload(message []byte) (TanksPayload, error) {
-	var requestPayload TanksPayload
-	unmarshallErr := json.Unmarshal(message, &requestPayload)
-	return requestPayload, unmarshallErr
+func saveCoordinates(id string, payload CoordinatesChangedPayload) {
+	objects.Store(id, payload)
 }
 
-func savePayload(id string, payload TanksPayload) {
-	objects.Store(id, payload)
+func performUserInitialization(client *websocket.Conn) {
+
+	_, message, err := client.ReadMessage()
+
+	if err != nil {
+		fmt.Printf("Error when reading initialization payload : " + err.Error() + "\n")
+		return
+	}
+
+	fmt.Printf("%s : Received initialization informations = '%s'\n", client.RemoteAddr(), string(message))
+	var payload, payloadError = createUserConnectedPayload(message)
+
+	if payloadError != nil {
+		fmt.Printf("Error when convertin initialization payload to Object : " + payloadError.Error() + "\n")
+		return
+	}
+
+	metadata.Store(client.RemoteAddr(), payload.Id)
+	var initializationPayload = InitializePayload{Id: payload.Id, MessageType: "create_player", Health: 100, Coordinates: Coordinates{X: 200, Y: 600}}
+	if err = client.WriteJSON(initializationPayload); err != nil {
+		fmt.Printf("Error when sending 'create_player' payload : " + err.Error() + "\n")
+	}
+	broadcastPayload(client, initializationPayload)
 }
 
 func sendHistoricalPayloadsForObjects(client *websocket.Conn) {
@@ -82,4 +96,32 @@ func sendHistoricalPayloadsForObjects(client *websocket.Conn) {
 
 		return true
 	})
+}
+
+func handleUserDisconnection(client *websocket.Conn) {
+	metadata.Range(func(address, id interface{}) bool {
+		if address == client.RemoteAddr() {
+			sendUserDisconnection(client, id.(string))
+			metadata.Delete(address)
+		}
+		return true
+	})
+}
+
+func sendUserDisconnection(client *websocket.Conn, id string) {
+	var payload = UserDisconnectedPayload{Id: id, MessageType: "user_disconnected"}
+	fmt.Printf("Broadcasting 'user_disconnected' payload for id = %s\n", id)
+	broadcastPayload(client, payload)
+}
+
+func broadcastPayload(currentConnection *websocket.Conn, payload any) {
+	for _, client := range clients {
+		if client.RemoteAddr() != currentConnection.RemoteAddr() {
+			fmt.Printf("%s : Sending payload : '%s'\n", client.RemoteAddr(), payload)
+			if err := client.WriteJSON(payload); err != nil {
+				fmt.Printf(err.Error() + "\n")
+				return
+			}
+		}
+	}
 }
