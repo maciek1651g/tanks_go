@@ -1,6 +1,8 @@
 package main
 
-import "encoding/json"
+import (
+	"encoding/json"
+)
 
 type UserConnectedPayload struct {
 	Id          string `json:"id"`
@@ -13,7 +15,7 @@ type CoordinatesChangedPayload struct {
 	Coordinates Coordinates `json:"coordinates"`
 }
 
-type InitializePayload struct {
+type UserStatusPayload struct {
 	Id          string      `json:"id"`
 	MessageType string      `json:"messageType"`
 	Health      int         `json:"health"`
@@ -26,8 +28,9 @@ type UserDisconnectedPayload struct {
 }
 
 type Coordinates struct {
-	X int `json:"x"`
-	Y int `json:"y"`
+	X          int `json:"x"`
+	Y          int `json:"y"`
+	DirectionX int `json:"directionX"`
 }
 
 func createCoordinatesPayload(message []byte) (CoordinatesChangedPayload, error) {
@@ -40,4 +43,8 @@ func createUserConnectedPayload(message []byte) (UserConnectedPayload, error) {
 	var requestPayload UserConnectedPayload
 	unmarshallErr := json.Unmarshal(message, &requestPayload)
 	return requestPayload, unmarshallErr
+}
+
+func createStatusPayload(id string, health int, coordinates Coordinates) UserStatusPayload {
+	return UserStatusPayload{Id: id, MessageType: "status", Health: health, Coordinates: coordinates}
 }
