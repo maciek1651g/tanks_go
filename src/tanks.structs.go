@@ -4,15 +4,14 @@ import (
 	"encoding/json"
 )
 
+type Payload struct {
+	MessageType string `json:"messageType"`
+	Data        string `json:"data"`
+}
+
 type UserConnectedPayload struct {
 	Id          string `json:"id"`
 	MessageType string `json:"messageType"`
-}
-
-type CoordinatesChangedPayload struct {
-	Id          string      `json:"id"`
-	MessageType string      `json:"messageType"`
-	Coordinates Coordinates `json:"coordinates"`
 }
 
 type UserStatusPayload struct {
@@ -27,16 +26,30 @@ type UserDisconnectedPayload struct {
 	MessageType string `json:"messageType"`
 }
 
+type UserAttackPayload struct {
+	Id          string `json:"id"`
+	MessageType string `json:"messageType"`
+}
+
+type CreateChestPayload struct {
+	Id          string      `json:"id"`
+	MessageType string      `json:"messageType"`
+	Coordinates Coordinates `json:"coordinates"`
+}
+
+type ChestGrabPayload struct {
+	Id string `json:"id"`
+}
+
+type ChestDestroyedPayload struct {
+	Id          string `json:"id"`
+	MessageType string `json:"messageType"`
+}
+
 type Coordinates struct {
 	X          int `json:"x"`
 	Y          int `json:"y"`
 	DirectionX int `json:"directionX"`
-}
-
-func createCoordinatesPayload(message []byte) (CoordinatesChangedPayload, error) {
-	var requestPayload CoordinatesChangedPayload
-	unmarshallErr := json.Unmarshal(message, &requestPayload)
-	return requestPayload, unmarshallErr
 }
 
 func createUserConnectedPayload(message []byte) (UserConnectedPayload, error) {
@@ -45,6 +58,34 @@ func createUserConnectedPayload(message []byte) (UserConnectedPayload, error) {
 	return requestPayload, unmarshallErr
 }
 
-func createStatusPayload(id string, health int, coordinates Coordinates) UserStatusPayload {
-	return UserStatusPayload{Id: id, MessageType: "status", Health: health, Coordinates: coordinates}
+func createUserStatusPayload(message []byte) (UserStatusPayload, error) {
+	var requestPayload UserStatusPayload
+	unmarshallErr := json.Unmarshal(message, &requestPayload)
+	return requestPayload, unmarshallErr
+}
+
+func createUserAttackPayload(message []byte) (UserAttackPayload, error) {
+	var requestPayload UserAttackPayload
+	unmarshallErr := json.Unmarshal(message, &requestPayload)
+	return requestPayload, unmarshallErr
+}
+
+func createChestGrabPayload(message []byte) (ChestGrabPayload, error) {
+	var requestPayload ChestGrabPayload
+	unmarshallErr := json.Unmarshal(message, &requestPayload)
+	return requestPayload, unmarshallErr
+}
+
+func createChestCreatePayload(chest Chest) CreateChestPayload {
+	return CreateChestPayload{Id: chest.Id, MessageType: "create_chest", Coordinates: chest.Coordinates}
+}
+
+func createChestDestroyedPayload(id string) ChestDestroyedPayload {
+	return ChestDestroyedPayload{Id: id, MessageType: "chest_destroy"}
+}
+
+type Chest struct {
+	Id          string
+	Coordinates Coordinates
+	Destroyed   bool
 }

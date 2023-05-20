@@ -6,6 +6,7 @@ import (
 )
 
 func main() {
+	initializeEngine()
 	configureConnector()
 	initializeWebSockets()
 	initializeHttpEndpoints()

@@ -34,6 +34,7 @@ func handleTanksConnection(w http.ResponseWriter, r *http.Request) {
 	clients = append(clients, *conn)
 	performUserInitialization(conn)
 	sendCurrentUserStatuses(conn)
+	sendCurrentChests(conn)
 
 	for true {
 		_, message, err := conn.ReadMessage()
@@ -44,15 +45,7 @@ func handleTanksConnection(w http.ResponseWriter, r *http.Request) {
 		}
 
 		fmt.Printf("%s : Received payload = '%s'\n", conn.RemoteAddr(), string(message))
-		var payload, payloadError = createCoordinatesPayload(message)
-
-		if payloadError != nil {
-			fmt.Printf(payloadError.Error() + "\n")
-			return
-		}
-
-		updateCoordinates(conn, payload)
-		broadcastStatus(conn)
+		handleActionPayload(conn, message)
 	}
 }
 
@@ -60,25 +53,11 @@ func saveUserStatus(id string, payload UserStatusPayload) {
 	objects.Store(id, payload)
 }
 
-func broadcastStatus(client *websocket.Conn) {
-	var id, _ = metadata.Load(client.RemoteAddr())
-	var status, _ = objects.Load(id)
-	var player = status.(UserStatusPayload)
-	var playerStatus = createStatusPayload(player.Id, player.Health, player.Coordinates)
-	broadcastPayload(client, playerStatus)
-}
-
-func updateCoordinates(client *websocket.Conn, coordinates CoordinatesChangedPayload) {
-	var id, _ = metadata.Load(client.RemoteAddr())
-	var status, _ = objects.Load(id)
-	var currentStatus = status.(UserStatusPayload)
-	currentStatus.Coordinates = coordinates.Coordinates
-	objects.Store(id, currentStatus)
-}
-
 func performUserInitialization(client *websocket.Conn) {
 
 	_, message, err := client.ReadMessage()
+
+	fmt.Printf("message: %s \n", string(message))
 
 	if err != nil {
 		fmt.Printf("Error when reading initialization payload : " + err.Error() + "\n")
@@ -93,6 +72,7 @@ func performUserInitialization(client *websocket.Conn) {
 		return
 	}
 
+	fmt.Printf("payload: %s \n", payload)
 	metadata.Store(client.RemoteAddr(), payload.Id)
 	var initializationPayload = UserStatusPayload{Id: payload.Id, MessageType: "create_player", Health: 100, Coordinates: Coordinates{X: 200, Y: 600}}
 	saveUserStatus(payload.Id, initializationPayload)
@@ -102,6 +82,7 @@ func performUserInitialization(client *websocket.Conn) {
 func sendCurrentUserStatuses(client *websocket.Conn) {
 	var id, _ = metadata.Load(client.RemoteAddr())
 	objects.Range(func(key, value interface{}) bool {
+		fmt.Printf("key: %s \n value: %s \n", key, value)
 		if id != key {
 			fmt.Printf("Sending historical data to %s : %s\n", client.RemoteAddr(), value)
 			var err = client.WriteJSON(value)
@@ -125,6 +106,17 @@ func handleUserDisconnection(client *websocket.Conn) {
 		}
 		return true
 	})
+}
+
+func sendCurrentChests(client *websocket.Conn) {
+	for _, chest := range chests {
+		if chest.Destroyed == false {
+			var payload = createChestCreatePayload(chest)
+			if err := client.WriteJSON(payload); err != nil {
+				fmt.Printf("Error occurred when sending 'CreateChestPayload' %s\n", payload)
+			}
+		}
+	}
 }
 
 func sendUserDisconnection(client *websocket.Conn, id string) {
