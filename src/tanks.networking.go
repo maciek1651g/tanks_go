@@ -14,7 +14,6 @@ var connector = websocket.Upgrader{
 
 var clients []websocket.Conn
 var metadata = sync.Map{}
-var objects = sync.Map{}
 
 func handleTanksConnection(w http.ResponseWriter, r *http.Request) {
 
@@ -34,6 +33,7 @@ func handleTanksConnection(w http.ResponseWriter, r *http.Request) {
 	clients = append(clients, *conn)
 	performUserInitialization(conn)
 	sendCurrentUserStatuses(conn)
+	sendCurrentMobs(conn)
 	sendCurrentChests(conn)
 
 	for true {
@@ -49,8 +49,13 @@ func handleTanksConnection(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func saveUserStatus(id string, payload UserStatusPayload) {
-	objects.Store(id, payload)
+func saveUserStatus(client *websocket.Conn, id string, payload UserStatusPayload, master bool) {
+	players.Store(id, Player{Id: id, Destroyed: false, Health: payload.Health, Coordinates: payload.Coordinates, Master: master})
+	if master {
+		if err := client.WriteJSON(createGameMasterPayload(id)); err != nil {
+			fmt.Printf("Error occurred when sending 'GameMasterPayload' : %s\n", err.Error())
+		}
+	}
 }
 
 func performUserInitialization(client *websocket.Conn) {
@@ -75,17 +80,17 @@ func performUserInitialization(client *websocket.Conn) {
 	fmt.Printf("payload: %s \n", payload)
 	metadata.Store(client.RemoteAddr(), payload.Id)
 	var initializationPayload = UserStatusPayload{Id: payload.Id, MessageType: "create_player", Health: 100, Coordinates: Coordinates{X: 200, Y: 600}}
-	saveUserStatus(payload.Id, initializationPayload)
+	saveUserStatus(client, payload.Id, initializationPayload, !containsGameMaster())
 	broadcastPayload(client, initializationPayload)
 }
 
 func sendCurrentUserStatuses(client *websocket.Conn) {
 	var id, _ = metadata.Load(client.RemoteAddr())
-	objects.Range(func(key, value interface{}) bool {
+	players.Range(func(key, value interface{}) bool {
 		fmt.Printf("key: %s \n value: %s \n", key, value)
 		if id != key {
 			fmt.Printf("Sending historical data to %s : %s\n", client.RemoteAddr(), value)
-			var err = client.WriteJSON(value)
+			var err = client.WriteJSON(createPlayerCreatePayload(value.(Player)))
 
 			if err != nil {
 				fmt.Printf("There was an error when sending payload to %s : %s\n", client.RemoteAddr(), err.Error())
@@ -100,12 +105,24 @@ func handleUserDisconnection(client *websocket.Conn) {
 	metadata.Range(func(address, id interface{}) bool {
 		if address == client.RemoteAddr() {
 			sendUserDisconnection(client, id.(string))
+			verifyMaster(id.(string))
 			var id, _ = metadata.Load(address)
 			metadata.Delete(address)
-			objects.Delete(id)
+			players.Delete(id)
 		}
 		return true
 	})
+}
+
+func sendCurrentMobs(client *websocket.Conn) {
+	for _, mob := range mobs {
+		if mob.Destroyed == false {
+			var payload = createMobCreatedPayload(mob)
+			if err := client.WriteJSON(payload); err != nil {
+				fmt.Printf("Error occurred when sending 'MobCreatedPayload' %s\n", payload)
+			}
+		}
+	}
 }
 
 func sendCurrentChests(client *websocket.Conn) {
@@ -119,20 +136,47 @@ func sendCurrentChests(client *websocket.Conn) {
 	}
 }
 
+func verifyMaster(id string) {
+	var player, _ = players.Load(id)
+	if player.(Player).Master == true {
+		var player = findNonMaster()
+		if player != nil {
+			var client = findClient(player.Id)
+			saveUserStatus(client, player.Id, createUserStatusPayloadFromPlayer(*player), true)
+		}
+	}
+}
+
 func sendUserDisconnection(client *websocket.Conn, id string) {
 	var payload = UserDisconnectedPayload{Id: id, MessageType: "user_disconnected"}
 	fmt.Printf("Broadcasting 'user_disconnected' payload for id = %s\n", id)
 	broadcastPayload(client, payload)
 }
 
-func broadcastPayload(currentConnection *websocket.Conn, payload any) {
+func broadcastPayload(except *websocket.Conn, payload any) {
 	for _, client := range clients {
-		if client.RemoteAddr() != currentConnection.RemoteAddr() {
+		if except == nil || client.RemoteAddr() != except.RemoteAddr() {
 			fmt.Printf("%s : Sending payload : '%s'\n", client.RemoteAddr(), payload)
 			if err := client.WriteJSON(payload); err != nil {
 				fmt.Printf(err.Error() + "\n")
-				return
+				// return
 			}
 		}
 	}
+}
+
+func broadcastPayloadToAll(payload any) {
+	broadcastPayload(nil, payload)
+}
+
+func findClient(id string) *websocket.Conn {
+
+	for _, client := range clients {
+		var playerId, _ = metadata.Load(client.RemoteAddr())
+		if playerId == id {
+			return &client
+		}
+	}
+
+	return nil
 }

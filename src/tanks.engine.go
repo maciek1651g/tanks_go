@@ -5,12 +5,22 @@ import (
 	"fmt"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
+	"sync"
 )
 
 var chests []Chest
+var mobs []Mob
+var players = sync.Map{}
 
 func initializeEngine() {
+	createMobs()
 	createChests()
+}
+
+func createMobs() {
+	mobs = []Mob{
+		createStandardMob(uuid.New().String(), Coordinates{X: 550, Y: 600}),
+	}
 }
 
 func createChests() {
@@ -59,6 +69,8 @@ func handleActionPayload(conn *websocket.Conn, bytes []byte) {
 		handleUserAttackPayload(conn, payload)
 	case "chest_grab":
 		handleChestGrabPayload(conn, payload)
+	case "user_damage":
+		handleUserDamagePayload(conn, payload)
 	}
 }
 
@@ -87,10 +99,10 @@ func handleUserAttackPayload(conn *websocket.Conn, payload Payload) {
 
 func updateCoordinates(client *websocket.Conn, coordinates Coordinates) {
 	var id, _ = metadata.Load(client.RemoteAddr())
-	var status, _ = objects.Load(id)
-	var currentStatus = status.(UserStatusPayload)
+	var status, _ = players.Load(id)
+	var currentStatus = status.(Player)
 	currentStatus.Coordinates = coordinates
-	objects.Store(id, currentStatus)
+	players.Store(id, currentStatus)
 }
 
 func handleChestGrabPayload(conn *websocket.Conn, payload Payload) {
@@ -106,6 +118,41 @@ func handleChestGrabPayload(conn *websocket.Conn, payload Payload) {
 	}
 }
 
+func handleUserDamagePayload(conn *websocket.Conn, payload Payload) {
+	var userDamagePayload, err = createUserDamagePayload([]byte(payload.Data))
+
+	if err != nil {
+		fmt.Printf("Could not deserialize 'UserDamagePayload' %s", err)
+		return
+	}
+
+	var damaged, destroyed = dealDamage(userDamagePayload)
+
+	if damaged {
+		broadcastPayload(conn, userDamagePayload)
+	}
+
+	if destroyed {
+		broadcastPayloadToAll(createMobDestroyedPayload(userDamagePayload.TargetId))
+	}
+
+}
+
+func dealDamage(payload UserDamagePayload) (bool, bool) {
+	for index, mob := range mobs {
+		if mob.Id == payload.TargetId {
+			mobs[index].dealDamage(payload.Damage)
+			if mobs[index].Destroyed == true {
+				return true, true
+			} else {
+				return true, false
+			}
+		}
+	}
+
+	return false, false
+}
+
 func deleteChest(id string) bool {
 	for index, chest := range chests {
 		if chest.Id == id {
@@ -115,4 +162,32 @@ func deleteChest(id string) bool {
 	}
 
 	return false
+}
+
+func containsGameMaster() bool {
+	var containsMaster = false
+	players.Range(func(key, value any) bool {
+		var player = value.(Player)
+		if player.Master == true {
+			containsMaster = true
+		}
+		return true
+	})
+
+	return containsMaster
+}
+
+func findNonMaster() *Player {
+	var master *Player = nil
+	players.Range(func(key, value any) bool {
+		var player = value.(Player)
+		if player.Master == false && player.Destroyed == false {
+			master = &player
+			return false
+		} else {
+			return true
+		}
+	})
+
+	return master
 }
