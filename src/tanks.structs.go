@@ -45,6 +45,19 @@ type UserDamagePayload struct {
 	MessageType string  `json:"messageType"`
 }
 
+type UserHealthPayload struct {
+	Id          string  `json:"id"`
+	Health      float64 `json:"health"`
+	MessageType string  `json:"messageType"`
+}
+
+type MobDamagePayload struct {
+	Id          string  `json:"id"`
+	TargetId    string  `json:"targetId"`
+	Damage      float64 `json:"damage"`
+	MessageType string  `json:"messageType"`
+}
+
 type CreateChestPayload struct {
 	Id          string      `json:"id"`
 	MessageType string      `json:"messageType"`
@@ -52,6 +65,11 @@ type CreateChestPayload struct {
 }
 
 type MobDestroyedPayload struct {
+	Id          string `json:"id"`
+	MessageType string `json:"messageType"`
+}
+
+type UserDestroyedPayload struct {
 	Id          string `json:"id"`
 	MessageType string `json:"messageType"`
 }
@@ -69,6 +87,12 @@ type MobCreatedPayload struct {
 	Id          string      `json:"id"`
 	MessageType string      `json:"messageType"`
 	Health      float64     `json:"health"`
+	Coordinates Coordinates `json:"coordinates"`
+}
+
+type MobStatusPayload struct {
+	Id          string      `json:"id"`
+	MessageType string      `json:"messageType"`
 	Coordinates Coordinates `json:"coordinates"`
 }
 
@@ -113,6 +137,18 @@ func createUserDamagePayload(message []byte) (UserDamagePayload, error) {
 	return requestPayload, unmarshallErr
 }
 
+func createMobDamagePayload(message []byte) (MobDamagePayload, error) {
+	var requestPayload MobDamagePayload
+	unmarshallErr := json.Unmarshal(message, &requestPayload)
+	return requestPayload, unmarshallErr
+}
+
+func createMobStatusPayload(message []byte) (MobStatusPayload, error) {
+	var requestPayload MobStatusPayload
+	unmarshallErr := json.Unmarshal(message, &requestPayload)
+	return requestPayload, unmarshallErr
+}
+
 func createChestCreatePayload(chest Chest) CreateChestPayload {
 	return CreateChestPayload{Id: chest.Id, MessageType: "create_chest", Coordinates: chest.Coordinates}
 }
@@ -127,6 +163,14 @@ func createMobCreatedPayload(mob Mob) MobCreatedPayload {
 
 func createMobDestroyedPayload(id string) MobDestroyedPayload {
 	return MobDestroyedPayload{Id: id, MessageType: "mob_destroy"}
+}
+
+func createUserDestroyedPayload(id string) UserDestroyedPayload {
+	return UserDestroyedPayload{Id: id, MessageType: "user_destroy"}
+}
+
+func createUserHealthPayload(player Player) UserHealthPayload {
+	return UserHealthPayload{Id: player.Id, MessageType: "user_health", Health: player.Health}
 }
 
 func createStandardMob(id string, coordinates Coordinates) Mob {
@@ -169,4 +213,9 @@ type Player struct {
 func (mob *Mob) dealDamage(damage float64) {
 	mob.Health = mob.Health - damage
 	mob.Destroyed = mob.Health <= 0
+}
+
+func (player *Player) dealDamage(damage float64) {
+	player.Health = player.Health - damage
+	player.Destroyed = player.Health <= 0
 }
