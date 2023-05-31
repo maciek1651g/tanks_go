@@ -17,7 +17,6 @@ type UserConnectedPayload struct {
 type UserStatusPayload struct {
 	Id          string      `json:"id"`
 	MessageType string      `json:"messageType"`
-	Health      float64     `json:"health"`
 	Coordinates Coordinates `json:"coordinates"`
 }
 
@@ -75,7 +74,8 @@ type UserDestroyedPayload struct {
 }
 
 type ChestGrabPayload struct {
-	Id string `json:"id"`
+	Id       string `json:"id"`
+	PlayerId string `json:"playerId"`
 }
 
 type ChestDestroyedPayload struct {
@@ -105,6 +105,11 @@ type Coordinates struct {
 type GameMasterPayload struct {
 	Id          string `json:"id"`
 	MessageType string `json:"messageType"`
+}
+
+type UserScorePayload struct {
+	MessageType string  `json:"messageType"`
+	Score       float64 `json:"score"`
 }
 
 func createUserConnectedPayload(message []byte) (UserConnectedPayload, error) {
@@ -149,6 +154,10 @@ func createMobStatusPayload(message []byte) (MobStatusPayload, error) {
 	return requestPayload, unmarshallErr
 }
 
+func createUserScorePayload(player Player) UserScorePayload {
+	return UserScorePayload{MessageType: "user_score", Score: player.Score}
+}
+
 func createChestCreatePayload(chest Chest) CreateChestPayload {
 	return CreateChestPayload{Id: chest.Id, MessageType: "create_chest", Coordinates: chest.Coordinates}
 }
@@ -182,7 +191,7 @@ func createGameMasterPayload(id string) GameMasterPayload {
 }
 
 func createUserStatusPayloadFromPlayer(player Player) UserStatusPayload {
-	return UserStatusPayload{Id: player.Id, MessageType: "status", Coordinates: player.Coordinates, Health: player.Health}
+	return UserStatusPayload{Id: player.Id, MessageType: "status", Coordinates: player.Coordinates}
 }
 
 func createPlayerCreatePayload(player Player) UserCreatePayload {
@@ -208,6 +217,7 @@ type Player struct {
 	Destroyed   bool
 	Health      float64
 	Master      bool
+	Score       float64
 }
 
 func (mob *Mob) dealDamage(damage float64) {

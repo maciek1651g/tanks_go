@@ -49,9 +49,9 @@ func handleTanksConnection(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func saveUserStatus(client *websocket.Conn, id string, payload UserStatusPayload, master bool) {
-	players.Store(id, Player{Id: id, Destroyed: false, Health: payload.Health, Coordinates: payload.Coordinates, Master: master})
-	if master {
+func saveUserStatus(client *websocket.Conn, id string, player Player) {
+	players.Store(id, player)
+	if player.Master {
 		if err := client.WriteJSON(createGameMasterPayload(id)); err != nil {
 			fmt.Printf("Error occurred when sending 'GameMasterPayload' : %s\n", err.Error())
 		}
@@ -79,8 +79,9 @@ func performUserInitialization(client *websocket.Conn) {
 
 	fmt.Printf("payload: %s \n", payload)
 	metadata.Store(client.RemoteAddr(), payload.Id)
-	var initializationPayload = UserStatusPayload{Id: payload.Id, MessageType: "create_player", Health: 100, Coordinates: Coordinates{X: 200, Y: 600}}
-	saveUserStatus(client, payload.Id, initializationPayload, !containsGameMaster())
+	var player = Player{Id: payload.Id, Destroyed: false, Coordinates: Coordinates{X: 200, Y: 600}, Health: 100, Master: !containsGameMaster()}
+	var initializationPayload = createPlayerCreatePayload(player)
+	saveUserStatus(client, payload.Id, player)
 	broadcastPayload(client, initializationPayload)
 }
 
@@ -106,7 +107,6 @@ func handleUserDisconnection(client *websocket.Conn) {
 		if address == client.RemoteAddr() {
 			sendUserDisconnection(client, id.(string))
 			verifyMaster(id.(string))
-			var id, _ = metadata.Load(address)
 			metadata.Delete(address)
 			players.Delete(id)
 		}
@@ -142,7 +142,8 @@ func verifyMaster(id string) {
 		var player = findNonMaster()
 		if player != nil {
 			var client = findClient(player.Id)
-			saveUserStatus(client, player.Id, createUserStatusPayloadFromPlayer(*player), true)
+			player.Master = true
+			saveUserStatus(client, player.Id, *player)
 		}
 	}
 }

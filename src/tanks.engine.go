@@ -152,8 +152,30 @@ func handleChestGrabPayload(conn *websocket.Conn, payload Payload) {
 	}
 
 	if deleteChest(chestGrabPayload.Id) == true {
+		resolveScore(conn, chestGrabPayload.PlayerId, 10)
 		broadcastPayload(conn, createChestDestroyedPayload(chestGrabPayload.Id))
 	}
+}
+
+func resolveScore(client *websocket.Conn, id string, score float64) {
+	players.Range(func(key, value any) bool {
+		var player = value.(Player)
+		if player.Id == id {
+			var enrichedPlayer = assignScore(player, score)
+			var payload = createUserScorePayload(enrichedPlayer)
+			if err := client.WriteJSON(payload); err != nil {
+				fmt.Printf("Error occurred when sending 'UserScorePayload' : %s\n", payload)
+			}
+			return false
+		}
+		return true
+	})
+}
+
+func assignScore(player Player, amount float64) Player {
+	player.Score = player.Score + amount
+	players.Store(player.Id, player)
+	return player
 }
 
 func handleUserDamagePayload(conn *websocket.Conn, payload Payload) {
@@ -168,13 +190,12 @@ func handleUserDamagePayload(conn *websocket.Conn, payload Payload) {
 
 	if damaged {
 		var player, _ = players.Load(userDamagePayload.TargetId)
-		broadcastPayload(conn, createUserHealthPayload(player.(Player)))
+		broadcastPayloadToAll(createUserHealthPayload(player.(Player)))
 	}
 
 	if destroyed {
 		broadcastPayloadToAll(createUserDestroyedPayload(userDamagePayload.TargetId))
 	}
-
 }
 
 func handleMobDamagePayload(conn *websocket.Conn, payload Payload) {
@@ -192,9 +213,9 @@ func handleMobDamagePayload(conn *websocket.Conn, payload Payload) {
 	}
 
 	if destroyed {
+		resolveScore(conn, mobDamagePayload.Id, 20)
 		broadcastPayloadToAll(createMobDestroyedPayload(mobDamagePayload.TargetId))
 	}
-
 }
 
 func dealDamageToUser(payload UserDamagePayload) (bool, bool) {
