@@ -1,11 +1,17 @@
 package main
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 )
 
 func main() {
+	var session, err = initializeMongoSession()
+	if err != nil {
+		fmt.Printf("Error : %s", err)
+	}
+	save(UserCreatePayload{Id: "", Health: 100.00, Coordinates: Coordinates{X: 200, Y: 600}}, session, "users")
 	initializeEngine()
 	configureConnector()
 	initializeWebSockets()
