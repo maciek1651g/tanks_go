@@ -3,6 +3,7 @@ package main
 import (
 	"fmt"
 	"github.com/gorilla/websocket"
+	"go.mongodb.org/mongo-driver/mongo"
 	"net/http"
 	"sync"
 )
@@ -30,11 +31,18 @@ func handleTanksConnection(w http.ResponseWriter, r *http.Request) {
 
 	fmt.Println("Initialized connection for : " + conn.RemoteAddr().String())
 
+	var mongo, error = initializeMongoSession()
+
+	if error != nil {
+		fmt.Printf("Error occurred for mongo: %s", error)
+	}
+
 	clients = append(clients, *conn)
-	performUserInitialization(conn)
+	performUserInitialization(conn, mongo)
 	sendCurrentUserStatuses(conn)
 	sendCurrentMobs(conn)
 	sendCurrentChests(conn)
+	storeSession(mongo, conn)
 
 	for true {
 		_, message, err := conn.ReadMessage()
@@ -45,7 +53,7 @@ func handleTanksConnection(w http.ResponseWriter, r *http.Request) {
 		}
 
 		fmt.Printf("%s : Received payload = '%s'\n", conn.RemoteAddr(), string(message))
-		handleActionPayload(conn, message)
+		handleActionPayload(conn, mongo, message)
 	}
 }
 
@@ -58,7 +66,7 @@ func saveUserStatus(client *websocket.Conn, id string, player Player) {
 	}
 }
 
-func performUserInitialization(client *websocket.Conn) {
+func performUserInitialization(client *websocket.Conn, mongo *mongo.Client) {
 
 	_, message, err := client.ReadMessage()
 
@@ -79,9 +87,11 @@ func performUserInitialization(client *websocket.Conn) {
 
 	fmt.Printf("payload: %s \n", payload)
 	metadata.Store(client.RemoteAddr(), payload.Id)
+
 	var player = Player{Id: payload.Id, Destroyed: false, Coordinates: Coordinates{X: 200, Y: 600}, Health: 100, Master: !containsGameMaster()}
 	var initializationPayload = createPlayerCreatePayload(player)
 	saveUserStatus(client, payload.Id, player)
+	saveInMongo(player, mongo, "users")
 	broadcastPayload(client, initializationPayload)
 }
 
@@ -109,6 +119,7 @@ func handleUserDisconnection(client *websocket.Conn) {
 			verifyMaster(id.(string))
 			metadata.Delete(address)
 			players.Delete(id)
+			mongoClients.Delete(client.RemoteAddr())
 		}
 		return true
 	})

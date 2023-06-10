@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"github.com/google/uuid"
 	"github.com/gorilla/websocket"
+	"go.mongodb.org/mongo-driver/mongo"
 	"sync"
 )
 
@@ -63,7 +64,7 @@ func createChests() {
 	}
 }
 
-func handleActionPayload(conn *websocket.Conn, bytes []byte) {
+func handleActionPayload(conn *websocket.Conn, client *mongo.Client, bytes []byte) {
 	var payload Payload
 	var error = json.Unmarshal(bytes, &payload)
 
@@ -74,21 +75,21 @@ func handleActionPayload(conn *websocket.Conn, bytes []byte) {
 
 	switch payload.MessageType {
 	case "status":
-		handleStatusPayload(conn, payload)
+		handleStatusPayload(conn, client, payload)
 	case "user_attack":
-		handleUserAttackPayload(conn, payload)
+		handleUserAttackPayload(conn, client, payload)
 	case "chest_grab":
-		handleChestGrabPayload(conn, payload)
+		handleChestGrabPayload(conn, client, payload)
 	case "user_damage":
-		handleUserDamagePayload(conn, payload)
+		handleUserDamagePayload(conn, client, payload)
 	case "mob_status":
-		handleMobStatusPayload(conn, payload)
+		handleMobStatusPayload(conn, client, payload)
 	case "mob_damage":
-		handleMobDamagePayload(conn, payload)
+		handleMobDamagePayload(conn, client, payload)
 	}
 }
 
-func handleStatusPayload(conn *websocket.Conn, payload Payload) {
+func handleStatusPayload(conn *websocket.Conn, client *mongo.Client, payload Payload) {
 	var userStatusPayload, err = createUserStatusPayload([]byte(payload.Data))
 
 	if err != nil {
@@ -98,9 +99,10 @@ func handleStatusPayload(conn *websocket.Conn, payload Payload) {
 
 	updateCoordinates(conn, userStatusPayload.Coordinates)
 	broadcastPayload(conn, userStatusPayload)
+	go saveInMongo(userStatusPayload, client, "users_statuses")
 }
 
-func handleMobStatusPayload(conn *websocket.Conn, payload Payload) {
+func handleMobStatusPayload(conn *websocket.Conn, client *mongo.Client, payload Payload) {
 	var mobStatusPayload, err = createMobStatusPayload([]byte(payload.Data))
 
 	if err != nil {
@@ -111,6 +113,8 @@ func handleMobStatusPayload(conn *websocket.Conn, payload Payload) {
 	if updateMobCoordinates(mobStatusPayload.Id, mobStatusPayload.Coordinates) {
 		broadcastPayload(conn, mobStatusPayload)
 	}
+
+	go saveInMongo(mobStatusPayload, client, "mob_statuses")
 }
 
 func updateMobCoordinates(id string, coordinates Coordinates) bool {
@@ -124,7 +128,7 @@ func updateMobCoordinates(id string, coordinates Coordinates) bool {
 	return false
 }
 
-func handleUserAttackPayload(conn *websocket.Conn, payload Payload) {
+func handleUserAttackPayload(conn *websocket.Conn, client *mongo.Client, payload Payload) {
 	var userAttackPayload, err = createUserAttackPayload([]byte(payload.Data))
 
 	if err != nil {
@@ -133,17 +137,18 @@ func handleUserAttackPayload(conn *websocket.Conn, payload Payload) {
 	}
 
 	broadcastPayload(conn, userAttackPayload)
+	go saveInMongo(userAttackPayload, client, "user_attacks")
 }
 
-func updateCoordinates(client *websocket.Conn, coordinates Coordinates) {
-	var id, _ = metadata.Load(client.RemoteAddr())
+func updateCoordinates(conn *websocket.Conn, coordinates Coordinates) {
+	var id, _ = metadata.Load(conn.RemoteAddr())
 	var status, _ = players.Load(id)
 	var currentStatus = status.(Player)
 	currentStatus.Coordinates = coordinates
 	players.Store(id, currentStatus)
 }
 
-func handleChestGrabPayload(conn *websocket.Conn, payload Payload) {
+func handleChestGrabPayload(conn *websocket.Conn, client *mongo.Client, payload Payload) {
 	var chestGrabPayload, err = createChestGrabPayload([]byte(payload.Data))
 
 	if err != nil {
@@ -154,7 +159,10 @@ func handleChestGrabPayload(conn *websocket.Conn, payload Payload) {
 	if deleteChest(chestGrabPayload.Id) == true {
 		resolveScore(conn, chestGrabPayload.PlayerId, 10)
 		broadcastPayload(conn, createChestDestroyedPayload(chestGrabPayload.Id))
+		go saveInMongo(createChestDestroyedPayload(chestGrabPayload.Id), client, "chest_destroyed")
 	}
+
+	go saveInMongo(chestGrabPayload, client, "chest_grabbed")
 }
 
 func resolveScore(client *websocket.Conn, id string, score float64) {
@@ -178,7 +186,7 @@ func assignScore(player Player, amount float64) Player {
 	return player
 }
 
-func handleUserDamagePayload(conn *websocket.Conn, payload Payload) {
+func handleUserDamagePayload(conn *websocket.Conn, client *mongo.Client, payload Payload) {
 	var userDamagePayload, err = createUserDamagePayload([]byte(payload.Data))
 
 	if err != nil {
@@ -195,10 +203,11 @@ func handleUserDamagePayload(conn *websocket.Conn, payload Payload) {
 
 	if destroyed {
 		broadcastPayloadToAll(createUserDestroyedPayload(userDamagePayload.TargetId))
+		go saveInMongo(createUserDestroyedPayload(userDamagePayload.TargetId), client, "user_destroyed")
 	}
 }
 
-func handleMobDamagePayload(conn *websocket.Conn, payload Payload) {
+func handleMobDamagePayload(conn *websocket.Conn, client *mongo.Client, payload Payload) {
 	var mobDamagePayload, err = createMobDamagePayload([]byte(payload.Data))
 
 	if err != nil {
@@ -215,7 +224,9 @@ func handleMobDamagePayload(conn *websocket.Conn, payload Payload) {
 	if destroyed {
 		resolveScore(conn, mobDamagePayload.Id, 20)
 		broadcastPayloadToAll(createMobDestroyedPayload(mobDamagePayload.TargetId))
+		go saveInMongo(createMobDestroyedPayload(mobDamagePayload.TargetId), client, "mob_destroyed")
 	}
+
 }
 
 func dealDamageToUser(payload UserDamagePayload) (bool, bool) {
