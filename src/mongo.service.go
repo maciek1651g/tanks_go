@@ -1,17 +1,21 @@
 package main
 
 import (
+	"context"
 	"fmt"
-	"gopkg.in/mgo.v2"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
+	"os"
 )
 
-func save(object any, session *mgo.Session, collection string) {
-	err := session.DB("game_stats").C(collection).Insert(object)
+func save(object interface{}, client *mongo.Client, collectionName string) {
+	var collection = client.Database("game_stats").Collection(collectionName)
+	_, err := collection.InsertOne(context.TODO(), object)
 	if err != nil {
-		fmt.Printf("Could not save data in collection %s: %s", collection, err)
+		fmt.Printf("Could not save data in collectvvvion %s: %s", collection, err)
 	}
 }
 
-func initializeMongoSession() (*mgo.Session, error) {
-	return mgo.Dial("mongodb://maciek1651g:V7q3qYGppE2eaflc@ac-trubrvu-shard-00-02.pmjetfp.mongodb.net:27017,ac-trubrvu-shard-00-00.pmjetfp.mongodb.net:27017,ac-trubrvu-shard-00-01.pmjetfp.mongodb.net:27017,mdcluster0.pmjetfp.mongodb.net")
+func initializeMongoSession() (*mongo.Client, error) {
+	return mongo.Connect(context.TODO(), options.Client().ApplyURI(os.Getenv("MONGODB_URI")))
 }
