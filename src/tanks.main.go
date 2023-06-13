@@ -23,12 +23,21 @@ func initializeWebSockets() {
 
 func initializeHttpEndpoints() {
 	http.Handle("/", http.FileServer(http.Dir("./static")))
+	http.HandleFunc("/api/users:migrate", migrateUser)
+	http.HandleFunc("/api/users:migrate-add", migrateAddUser)
 }
 
 func initializeServer() {
-	port := os.Getenv("PORT")
-	if port == "" {
-		port = "8080"
+	args := os.Args
+	var port string
+
+	if len(args) > 1 {
+		port = args[1]
+	} else {
+		port = os.Getenv("PORT")
+		if port == "" {
+			port = "8080"
+		}
 	}
 
 	println("You server run " + port)

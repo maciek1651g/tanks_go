@@ -1,8 +1,12 @@
 package main
 
 import (
+	"bytes"
+	"encoding/json"
 	"fmt"
 	"github.com/gorilla/websocket"
+	"log"
+	"net"
 	"net/http"
 	"sync"
 )
@@ -14,6 +18,50 @@ var connector = websocket.Upgrader{
 
 var clients []websocket.Conn
 var metadata = sync.Map{}
+
+func migrateAddUser(w http.ResponseWriter, r *http.Request) {
+	// Unmarshal the response body into a User struct
+	fmt.Println("Initializing user")
+	var user Player
+	var err = json.NewDecoder(r.Body).Decode(&user)
+	if err != nil {
+		log.Fatal("Error decoding response:", err)
+	}
+
+	players.Store(user.Id, user)
+}
+
+func migrateUser(w http.ResponseWriter, r *http.Request) {
+	var requestedId = r.URL.Query().Get("id")
+	var requestedUrl = r.URL.Query().Get("url")
+	metadata.Range(func(key, value any) bool {
+		var idMapped = value.(string)
+		var addressMapped = key.(net.Addr)
+		if idMapped == requestedId {
+			for _, client := range clients {
+				if client.RemoteAddr() == addressMapped {
+					var player, _ = players.Load(idMapped)
+					handleUserDisconnection(&client)
+
+					var response, _ = json.Marshal(player)
+
+					var clientP = http.Client{}
+					// Create a new HTTP request
+					req, _ := http.NewRequest("POST", requestedUrl+"/api/users:migrate-add", bytes.NewBuffer(response))
+
+					clientP.Do(req)
+				}
+			}
+
+			return false
+		} else {
+			w.Write([]byte("User not found"))
+			w.WriteHeader(404)
+		}
+
+		return true
+	})
+}
 
 func handleTanksConnection(w http.ResponseWriter, r *http.Request) {
 
@@ -45,7 +93,7 @@ func handleTanksConnection(w http.ResponseWriter, r *http.Request) {
 		}
 
 		fmt.Printf("%s : Received payload = '%s'\n", conn.RemoteAddr(), string(message))
-		handleActionPayload(conn, message)
+		go handleActionPayload(conn, message)
 	}
 }
 
@@ -79,7 +127,15 @@ func performUserInitialization(client *websocket.Conn) {
 
 	fmt.Printf("payload: %s \n", payload)
 	metadata.Store(client.RemoteAddr(), payload.Id)
-	var player = Player{Id: payload.Id, Destroyed: false, Coordinates: Coordinates{X: 200, Y: 600}, Health: 100, Master: !containsGameMaster()}
+	var data, found = players.Load(payload.Id)
+	var player Player
+
+	if found {
+		player = data.(Player)
+	} else {
+		player = Player{Id: payload.Id, Destroyed: false, Coordinates: Coordinates{X: 200, Y: 600}, Health: 100, Master: !containsGameMaster()}
+	}
+
 	var initializationPayload = createPlayerCreatePayload(player)
 	saveUserStatus(client, payload.Id, player)
 	broadcastPayload(client, initializationPayload)
