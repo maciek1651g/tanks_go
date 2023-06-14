@@ -107,7 +107,6 @@ func saveUserStatus(client *websocket.Conn, id string, player Player) {
 }
 
 func performUserInitialization(client *websocket.Conn) {
-
 	_, message, err := client.ReadMessage()
 
 	fmt.Printf("message: %s \n", string(message))
