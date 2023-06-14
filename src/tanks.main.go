@@ -1,8 +1,15 @@
 package main
 
 import (
+	"github.com/gorilla/handlers"
 	"net/http"
 	"os"
+)
+
+var corsHandler = handlers.CORS(
+	handlers.AllowedOrigins([]string{"*"}),
+	handlers.AllowedMethods([]string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}),
+	handlers.AllowedHeaders([]string{"Content-Type"}),
 )
 
 func main() {
@@ -18,13 +25,13 @@ func configureConnector() {
 }
 
 func initializeWebSockets() {
-	http.HandleFunc("/tanks/objects:exchange", handleTanksConnection)
+	http.Handle("/tanks/objects:exchange", corsHandler(http.HandlerFunc(handleTanksConnection)))
 }
 
 func initializeHttpEndpoints() {
 	http.Handle("/", http.FileServer(http.Dir("./static")))
-	http.HandleFunc("/api/users:migrate", migrateUser)
-	http.HandleFunc("/api/users:migrate-add", migrateAddUser)
+	http.Handle("/api/users:migrate", corsHandler(http.HandlerFunc(migrateUser)))
+	http.Handle("/api/users:migrate-add", corsHandler(http.HandlerFunc(migrateAddUser)))
 }
 
 func initializeServer() {
