@@ -215,7 +215,7 @@ func broadcastPayload(except *websocket.Conn, payload any) {
 			fmt.Printf("%s : Sending payload : '%s'\n", client.RemoteAddr(), payload)
 			if err := client.WriteJSON(payload); err != nil {
 				fmt.Printf(err.Error() + "\n")
-				return
+				// return
 			}
 		}
 	}
