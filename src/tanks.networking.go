@@ -28,6 +28,7 @@ func migrateAddUser(w http.ResponseWriter, r *http.Request) {
 		log.Fatal("Error decoding response:", err)
 	}
 
+	user.Master = !containsGameMaster()
 	players.Store(user.Id, user)
 }
 
