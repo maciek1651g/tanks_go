@@ -182,14 +182,16 @@ func sendCurrentMobs(client *websocket.Conn) {
 }
 
 func sendCurrentChests(client *websocket.Conn) {
-	for _, chest := range chests {
+	chests.Range(func(key, value any) bool {
+		var chest = value.(Chest)
 		if chest.Destroyed == false {
 			var payload = createChestCreatePayload(chest)
 			if err := client.WriteJSON(payload); err != nil {
 				fmt.Printf("Error occurred when sending 'CreateChestPayload' %s\n", payload)
 			}
 		}
-	}
+		return true
+	})
 }
 
 func verifyMaster(id string) {

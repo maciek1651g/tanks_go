@@ -8,7 +8,7 @@ import (
 	"sync"
 )
 
-var chests []Chest
+var chests = sync.Map{}
 var mobs []Mob
 var players = sync.Map{}
 
@@ -34,32 +34,17 @@ func createMobs() {
 }
 
 func createChests() {
-	chests = []Chest{
-		{
-			Id:          uuid.New().String(),
-			Coordinates: Coordinates{X: 200, Y: 600},
-			Destroyed:   false,
-		},
-		{
-			Id:          uuid.New().String(),
-			Coordinates: Coordinates{X: 300, Y: 1000},
-			Destroyed:   false,
-		},
-		{
-			Id:          uuid.New().String(),
-			Coordinates: Coordinates{X: 500, Y: 750},
-			Destroyed:   false,
-		},
-		{
-			Id:          uuid.New().String(),
-			Coordinates: Coordinates{X: 1100, Y: 700},
-			Destroyed:   false,
-		},
-		{
-			Id:          uuid.New().String(),
-			Coordinates: Coordinates{X: 950, Y: 730},
-			Destroyed:   false,
-		},
+	var coordinates = []Coordinates{
+		{X: 200, Y: 600},
+		{X: 300, Y: 1000},
+		{X: 500, Y: 750},
+		{X: 1100, Y: 700},
+		{X: 950, Y: 730},
+	}
+
+	for _, coordinate := range coordinates {
+		var id = uuid.New().String()
+		chests.Store(id, Chest{Id: id, Coordinates: coordinate, Destroyed: false})
 	}
 }
 
@@ -256,14 +241,20 @@ func dealDamageToMob(payload MobDamagePayload) (bool, bool) {
 }
 
 func deleteChest(id string) bool {
-	for index, chest := range chests {
+	var deleted = false
+
+	chests.Range(func(key, value any) bool {
+		var chest = value.(Chest)
 		if chest.Id == id {
-			chests[index].Destroyed = true
+			chest.Destroyed = true
+			deleted = true
+			return false
+		} else {
 			return true
 		}
-	}
+	})
 
-	return false
+	return deleted
 }
 
 func containsGameMaster() bool {
