@@ -270,6 +270,7 @@ func deleteChest(id string) bool {
 		var chest = value.(Chest)
 		if chest.Id == id {
 			chest.Destroyed = true
+			chests.Store(id, chest)
 			deleted = true
 			return false
 		} else {
