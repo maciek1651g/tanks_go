@@ -35,7 +35,7 @@ func createMobs() {
 
 	for _, coordinate := range coordinates {
 		var id = uuid.New().String()
-		chests.Store(id, createStandardMob(id, coordinate))
+		mobs.Store(id, createStandardMob(id, coordinate))
 	}
 }
 
