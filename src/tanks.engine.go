@@ -9,7 +9,7 @@ import (
 )
 
 var chests = sync.Map{}
-var mobs []Mob
+var mobs = sync.Map{}
 var players = sync.Map{}
 
 func initializeEngine() {
@@ -18,18 +18,24 @@ func initializeEngine() {
 }
 
 func createMobs() {
-	mobs = []Mob{
-		createStandardMob(uuid.New().String(), Coordinates{X: 200, Y: 200}),
-		createStandardMob(uuid.New().String(), Coordinates{X: 300, Y: 300}),
-		createStandardMob(uuid.New().String(), Coordinates{X: 400, Y: 400}),
-		createStandardMob(uuid.New().String(), Coordinates{X: 500, Y: 500}),
-		createStandardMob(uuid.New().String(), Coordinates{X: 600, Y: 600}),
-		createStandardMob(uuid.New().String(), Coordinates{X: 700, Y: 700}),
-		createStandardMob(uuid.New().String(), Coordinates{X: 800, Y: 800}),
-		createStandardMob(uuid.New().String(), Coordinates{X: 900, Y: 900}),
-		createStandardMob(uuid.New().String(), Coordinates{X: 1000, Y: 1000}),
-		createStandardMob(uuid.New().String(), Coordinates{X: 1100, Y: 1100}),
-		createStandardMob(uuid.New().String(), Coordinates{X: 550, Y: 600}),
+
+	var coordinates = []Coordinates{
+		{X: 200, Y: 200},
+		{X: 300, Y: 300},
+		{X: 400, Y: 400},
+		{X: 500, Y: 500},
+		{X: 600, Y: 600},
+		{X: 700, Y: 700},
+		{X: 800, Y: 800},
+		{X: 900, Y: 900},
+		{X: 1000, Y: 1000},
+		{X: 1100, Y: 1100},
+		{X: 550, Y: 600},
+	}
+
+	for _, coordinate := range coordinates {
+		var id = uuid.New().String()
+		chests.Store(id, createStandardMob(id, coordinate))
 	}
 }
 
@@ -99,14 +105,21 @@ func handleMobStatusPayload(conn *websocket.Conn, payload Payload) {
 }
 
 func updateMobCoordinates(id string, coordinates Coordinates) bool {
-	for index, mob := range mobs {
+	var updated = false
+
+	mobs.Range(func(key, value any) bool {
+		var mob = value.(Mob)
 		if mob.Id == id {
-			mobs[index].Coordinates = coordinates
+			mob.Coordinates = coordinates
+			mobs.Store(id, mob)
+			updated = true
+			return false
+		} else {
 			return true
 		}
-	}
+	})
 
-	return false
+	return updated
 }
 
 func handleUserAttackPayload(conn *websocket.Conn, payload Payload) {
@@ -226,18 +239,28 @@ func dealDamageToUser(payload UserDamagePayload) (bool, bool) {
 }
 
 func dealDamageToMob(payload MobDamagePayload) (bool, bool) {
-	for index, mob := range mobs {
-		if mob.Id == payload.TargetId {
-			mobs[index].dealDamage(payload.Damage)
-			if mobs[index].Destroyed == true {
-				return true, true
-			} else {
-				return true, false
-			}
-		}
-	}
+	var damaged = false
+	var destroyed = false
 
-	return false, false
+	mobs.Range(func(key, value any) bool {
+		var mob = value.(Mob)
+		if mob.Id == payload.TargetId {
+			mob.dealDamage(payload.Damage)
+			if mob.Destroyed == true {
+				damaged = true
+				destroyed = true
+			} else {
+				damaged = true
+				destroyed = false
+			}
+			mobs.Store(mob.Id, mob)
+			return false
+		} else {
+			return true
+		}
+	})
+
+	return damaged, destroyed
 }
 
 func deleteChest(id string) bool {

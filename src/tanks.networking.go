@@ -171,14 +171,16 @@ func handleUserDisconnection(client *websocket.Conn) {
 }
 
 func sendCurrentMobs(client *websocket.Conn) {
-	for _, mob := range mobs {
+	mobs.Range(func(key, value any) bool {
+		var mob = value.(Mob)
 		if mob.Destroyed == false {
 			var payload = createMobCreatedPayload(mob)
 			if err := client.WriteJSON(payload); err != nil {
 				fmt.Printf("Error occurred when sending 'MobCreatedPayload' %s\n", payload)
 			}
 		}
-	}
+		return true
+	})
 }
 
 func sendCurrentChests(client *websocket.Conn) {
